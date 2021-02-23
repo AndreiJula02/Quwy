@@ -1,8 +1,10 @@
 #     TO DO LIST     #
 # -> research and implement more moderating commands
+# -> implementing database
 
 import random
 import discord
+import sqlite3
 from discord.ext import commands
 from discord.ext.commands import MissingPermissions
 from discord.ext.commands import MissingRequiredArgument
