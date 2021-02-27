@@ -1,6 +1,8 @@
 #     TO DO LIST     #
 # -> research and implement more moderating commands
-# -> implementing database
+# -> implement open bets
+# -> implement pay, setcredits and other credits related command
+# -> add embeds to all the messages
 
 import random
 import discord
@@ -8,7 +10,6 @@ import sqlite3
 from discord.ext import commands
 from discord.ext.commands import MissingPermissions
 from discord.ext.commands import MissingRequiredArgument
-from discord.ext.commands import NoPrivateMessage
 
 token = 'ODA4MzY0OTc0Mzc5NDk5NTUw.YCFejA.63d1d5v3YzHEWjJw5VMqsYKmiH8'
 
@@ -40,50 +41,168 @@ async def quwyhelp(ctx):
 
 #####   DICE ROLL GAME   ##### (functional, to be upgraded)
 
-DG_dice_list = ['1', '2', '3', '4', '5', '6']
-DG_roll_1 = ''
-DG_roll_2 = ''
-DG_player_1 = ''
-DG_player_2 = ''
-def DG_reset():
-    global DG_roll_1
-    global DG_roll_2
-    global DG_player_1
-    global DG_player_2
-    DG_roll_1 = ''
-    DG_roll_2 = ''
-    DG_player_1 = ''
-    DG_player_2 = ''
+@client.command()
+@commands.guild_only()
+async def bet(ctx, enemy2 : discord.Member, amount=0):
+    db = sqlite3.connect('database.sqlite')
+    cursor = db.cursor()
+    cursor.execute(f"SELECT Players FROM credits WHERE Players = '{ctx.message.author.id}'")
+    result_playerID = cursor.fetchone()
+    gameName = "game#" + str(ctx.message.author) + " vs " + str(enemy2)
+    if result_playerID is None:
+        cursor.execute(f"INSERT INTO credits ('Players') values('{ctx.message.author.id}')")
+        db.commit()
+    cursor.execute(f"SELECT Players FROM credits WHERE Players = '{enemy2.id}'")
+    result_player2ID = cursor.fetchone()
+    if result_player2ID is None:
+        cursor.execute(f"INSERT INTO credits ('Players') values('{enemy2.id}')")
+        db.commit()
+    cursor.execute(f"SELECT GameNumber FROM dicebet WHERE GameNumber = '{gameName}'")
+    result_gameName = cursor.fetchone()
+    if result_gameName is None:
+        cursor.execute(f"INSERT INTO dicebet ('GameNumber') values('{gameName}')")
+        db.commit()
+    cursor.execute(f"UPDATE dicebet SET amount = '{int(amount)}' WHERE GameNumber = ('{gameName}')")
+    db.commit()
+    cursor.execute(f"SELECT Credits from credits WHERE Players = '{ctx.message.author.id}'")
+    result_player1Credits = cursor.fetchone()
+    cursor.execute(f"SELECT Credits from credits WHERE Players = '{enemy2.id}'")
+    result_player2Credits = cursor.fetchone()
+    if int(result_player1Credits[0]) >= int(amount) and int(result_player2Credits[0]) >= int(amount):
+        cursor.execute(f"UPDATE dicebet SET player_1 = '{ctx.message.author}' WHERE GameNumber = '{gameName}'")
+        cursor.execute(f"UPDATE dicebet SET player_2 = '{enemy2}' WHERE GameNumber = '{gameName}'")
+        cursor.execute(f"UPDATE dicebet SET roll_1 = '{random.randint(1,6)}' WHERE GameNumber = '{gameName}'")
+        cursor.execute(f"UPDATE dicebet SET roll_2 = '{random.randint(1, 6)}' WHERE GameNumber = '{gameName}'")
+        db.commit()
+    elif int(result_player1Credits[0]) >= int(amount):
+        embed = discord.Embed(title=f"{enemy2} does not have enough credits for that bet.",color=0xff0000)
+        await ctx.send(embed=embed)
+        cursor.execute(f"DELETE FROM dicebet WHERE GameNumber = '{gameName}'")
+        db.commit()
+    elif int(result_player2Credits[0]) >= int(amount):
+        embed = discord.Embed(title=f"You don't have enough credits for that bet.",color=0xff0000)
+        await ctx.send(embed=embed)
+        cursor.execute(f"DELETE FROM dicebet WHERE GameNumber = '{gameName}'")
+        db.commit()
+    else:
+        embed = discord.Embed(title=f"Not enough credits.",color=0xff0000)
+        await ctx.send(embed=embed)
+        cursor.execute(f"DELETE FROM dicebet WHERE GameNumber = '{gameName}'")
+        db.commit()
 
 @client.command()
 @commands.guild_only()
-async def dice(ctx):
-    global DG_roll_1
-    global DG_roll_2
-    global DG_player_1
-    global DG_player_2
-    if DG_roll_1 == '' or DG_player_1 == ctx.message.author:
-        DG_roll_1 = random.choice(DG_dice_list)
-        DG_player_1 = ctx.message.author
-        await ctx.send(f'{ctx.message.author.mention} rolled **{DG_roll_1}**!')
-    else:
-        DG_roll_2 = random.choice(DG_dice_list)
-        DG_player_2 = ctx.message.author
-        await ctx.send(f'{ctx.message.author.mention} rolled **{DG_roll_2}**!')
-        if DG_roll_1 > DG_roll_2:
-            await ctx.send(f'{DG_player_1.mention} won!')
-            DG_reset()
-        elif DG_roll_2 > DG_roll_1:
-            await ctx.send(f'{DG_player_2.mention} won!')
-            DG_reset()
+async def betacc(ctx, enemy1 : discord.Member):
+    db = sqlite3.connect('database.sqlite')
+    cursor = db.cursor()
+    gameName = "game#" + str(enemy1) + " vs " + str(ctx.message.author)
+    cursor.execute(f"SELECT GameNumber FROM dicebet WHERE GameNumber = '{gameName}'")
+    result_gameName = cursor.fetchone()
+    if result_gameName is not None:
+        cursor.execute(f"SELECT player_2 FROM dicebet WHERE GameNumber = '{gameName}'")
+        result_p2 = cursor.fetchone()
+        cursor.execute(f"SELECT player_1 FROM dicebet WHERE GameNumber = '{gameName}'")
+        result_p1 = cursor.fetchone()
+        cursor.execute(f"SELECT roll_1 FROM dicebet WHERE GameNumber = '{gameName}'")
+        result_r1 = cursor.fetchone()
+        cursor.execute(f"SELECT roll_2 FROM dicebet WHERE GameNumber = '{gameName}'")
+        result_r2 = cursor.fetchone()
+        cursor.execute(f"SELECT Credits FROM credits WHERE Players = '{enemy1.id}'")
+        result_player1Credits = cursor.fetchone()
+        cursor.execute(f"SELECT Credits FROM credits WHERE Players = '{ctx.message.author.id}'")
+        result_player2Credits = cursor.fetchone()
+        cursor.execute(f"SELECT amount FROM dicebet WHERE GameNumber = '{gameName}'")
+        result_amount = cursor.fetchone()
+        if int(result_player2Credits[0]) >= int(result_amount[0]) and int(result_player1Credits[0]) >= int(result_amount[0]):
+            if str(ctx.message.author) == str(result_p2[0]) and str(enemy1) == str(result_p1[0]):
+                if int(result_r1[0]) > int(result_r2[0]):
+                    cursor.execute(f"UPDATE credits SET Credits = {int(result_player1Credits[0])} + {int(result_amount[0])} WHERE Players = '{enemy1.id}'")
+                    cursor.execute(f"UPDATE credits SET Credits = {int(result_player2Credits[0])} - {int(result_amount[0])} WHERE Players = '{ctx.message.author.id}'")
+                    db.commit()
+                    embed = discord.Embed(description=f"**{enemy1.name}**-> **{str(result_r1[0])}** vs **{str(result_r2[0])}** <-**{ctx.message.author.name}** | Winner: **{enemy1.name}**",color = 0x00ff08)
+                    await ctx.send(embed=embed)
+                elif int(result_r2[0]) > int(result_r1[0]):
+                    cursor.execute(f"UPDATE credits SET Credits = {int(result_player1Credits[0])} - {int(result_amount[0])} WHERE Players = '{enemy1.id}'")
+                    cursor.execute(f"UPDATE credits SET Credits = {int(result_player2Credits[0])} + {int(result_amount[0])} WHERE Players = '{ctx.message.author.id}'")
+                    db.commit()
+                    embed = discord.Embed(description=f"**{enemy1.name}**-> **{str(result_r1[0])}** vs **{str(result_r2[0])}** <-**{ctx.message.author.name}** | Winner: **{ctx.message.author.name}**",color = 0x00ff08)
+                    await ctx.send(embed=embed)
+                else:
+                    embed = discord.Embed(description=f"**{enemy1.name}**-> **{str(result_r1[0])}** vs **{str(result_r2[0])}** <-**{ctx.message.author.name}** | Tie!",color = 0x00ff08)
+                    await ctx.send(embed=embed)
+                cursor.execute(f"DELETE FROM dicebet WHERE GameNumber = '{gameName}'")
+                db.commit()
+            else:
+                embed = discord.Embed(title=f"{enemy1} did not bet against you.", color=0xff0000)
+                await ctx.send(embed=embed)
+        elif int(result_player2Credits[0]) >= int(result_amount[0]):
+            embed = discord.Embed(title=f"{str(result_p1[0])} doesn't have enough credits for this bet anymore.", color=0xff0000)
+            await ctx.send(embed=embed)
+            cursor.execute(f"DELETE FROM dicebet WHERE GameNumber = '{gameName}'")
+            db.commit()
+        elif int(result_player1Credits[0]) >= int(result_amount[0]):
+            embed = discord.Embed(title="You don't have enough credits to accept this bet.", color=0xff0000)
+            await ctx.send(embed=embed)
+            cursor.execute(f"DELETE FROM dicebet WHERE GameNumber = '{gameName}'")
+            db.commit()
         else:
-            await ctx.send('Tie!')
-            DG_reset()
+            embed = discord.Embed(title=f"Not enough credits.", color=0xff0000)
+            await ctx.send(embed=embed)
+            cursor.execute(f"DELETE FROM dicebet WHERE GameNumber = '{gameName}'")
+            db.commit()
 
-@dice.error
-async def dice_error(ctx, error):
-    if isinstance(error, NoPrivateMessage):
-        print("DM error on .dice")
+
+    else:
+        embed = discord.Embed(title=f"{enemy1} doesn't have an open bet.", color=0xff0000)
+        await ctx.send(embed=embed)
+
+
+@client.command()
+@commands.guild_only()
+@commands.has_permissions(kick_members = True)
+async def betremove(ctx, enemy1 : discord.Member, enemy2 : discord.Member):
+    db = sqlite3.connect('database.sqlite')
+    cursor = db.cursor()
+    gameName = "game#" + str(enemy1) + " vs " + str(enemy2)
+    cursor.execute(f"SELECT GameNumber FROM dicebet WHERE GameNumber = '{gameName}'")
+    result_gameName = cursor.fetchone()
+    if result_gameName is not None:
+        cursor.execute(f"DELETE FROM dicebet WHERE GameNumber = '{gameName}'")
+        db.commit()
+        await ctx.send(f"Bet removed.")
+    else:
+        await ctx.send(f"There is not bet to remove.")
+
+@client.command()
+@commands.guild_only()
+@commands.has_permissions(administrator = True)
+async def betremoveall(ctx):
+    db = sqlite3.connect('database.sqlite')
+    cursor = db.cursor()
+    cursor.execute(f"DELETE FROM dicebet")
+    db.commit()
+    await ctx.send("All bets were removed.")
+
+@client.command()
+@commands.guild_only()
+async def credits(ctx):
+    db = sqlite3.connect('database.sqlite')
+    cursor = db.cursor()
+    cursor.execute(f"SELECT Credits from credits WHERE Players = '{ctx.message.author.id}'")
+    result_credits = cursor.fetchone()
+    if result_credits is not None:
+        embed = discord.Embed(description=f":coin: You have **{str(result_credits[0])}** credits! :coin:",color=0xffee00)
+        embed.set_footer(text=f"{ctx.message.author}")
+        await ctx.send(embed=embed)
+    else:
+        cursor.execute(f"INSERT INTO credits ('Players') values('{ctx.message.author.id}')")
+        db.commit()
+        cursor.execute(f"SELECT Credits from credits WHERE Players = '{ctx.message.author.id}'")
+        result_credits = cursor.fetchone()
+        embed = discord.Embed(description=f":coin: You have **{str(result_credits[0])}** credits! :coin:",color=0xffee00)
+        embed.set_footer(text=f"{ctx.message.author}")
+        await ctx.send(embed=embed)
+
 
 #####   CLEAR COMMAND   ##### (functional)
 
