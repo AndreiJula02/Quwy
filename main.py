@@ -46,9 +46,9 @@ async def bet(ctx, enemy2 : discord.Member, amount=0):
     db = sqlite3.connect('database.sqlite')
     cursor = db.cursor()
     guild_id = ctx.message.guild.id
+    gameName = "game#" + str(ctx.message.author) + " vs " + str(enemy2)
     cursor.execute(f"SELECT Players FROM credits WHERE Players = '{ctx.message.author.id}' AND guildID = '{guild_id}'")
     result_playerID = cursor.fetchone()
-    gameName = "game#" + str(ctx.message.author) + " vs " + str(enemy2)
     if result_playerID is None:
         cursor.execute(f"INSERT INTO credits ('Players', 'guildID') values('{ctx.message.author.id}', '{guild_id}')")
         db.commit()
@@ -249,7 +249,8 @@ async def credits(ctx):
 
 @client.command()
 @commands.guild_only()
-async def setcredits(ctx, member: discord.Member, amount):
+@commands.has_permissions(administrator = True)
+async def addcredits(ctx, member: discord.Member, amount):
     db = sqlite3.connect('database.sqlite')
     cursor = db.cursor()
     guild_id = ctx.message.guild.id
@@ -260,6 +261,76 @@ async def setcredits(ctx, member: discord.Member, amount):
     embed = discord.Embed(description=f":coin: **{member}** now has **{str(result_credits[0])}** credits! :coin:", color=0xffee00)
     embed.set_footer(text=f"{ctx.message.author}'s command.")
     await ctx.send(embed=embed)
+
+@addcredits.error
+async def addcredits_error(ctx, error):
+    if isinstance(error, MissingRequiredArgument):
+        embed = discord.Embed(title="How many credits and for who?", description="Command usage: **q.addcredits** _member_ _amount_", color=0xff0000)
+        embed.set_footer(text=f"{ctx.message.author}'s command.")
+        await ctx.send(embed=embed)
+    if isinstance(error, MissingPermissions):
+        embed = discord.Embed(title=f"You don't have the permission to add credits.", color=0xff0000)
+        embed.set_footer(text=f"{ctx.message.author}'s command.")
+        await ctx.send(embed=embed)
+
+
+@client.command()
+@commands.guild_only()
+@commands.has_permissions(administrator=True)
+async def setcredits(ctx, member: discord.Member, amount):
+    db = sqlite3.connect('database.sqlite')
+    cursor = db.cursor()
+    guild_id = ctx.message.guild.id
+    cursor.execute(f"UPDATE credits SET Credits = '{amount}' WHERE Players = {member.id} AND guildID = {guild_id}")
+    db.commit()
+    cursor.execute(f"SELECT Credits from credits WHERE Players = '{member.id}' AND guildID = '{guild_id}'")
+    result_credits = cursor.fetchone()
+    embed = discord.Embed(description=f":coin: **{member}** now has **{str(result_credits[0])}** credits! :coin:",
+                          color=0xffee00)
+    embed.set_footer(text=f"{ctx.message.author}'s command.")
+    await ctx.send(embed=embed)
+
+
+@setcredits.error
+async def setcredits_error(ctx, error):
+    if isinstance(error, MissingRequiredArgument):
+        embed = discord.Embed(title="How many credits and for who?", description="Command usage: **q.setcredits** _member_ _amount_", color=0xff0000)
+        embed.set_footer(text=f"{ctx.message.author}'s command.")
+        await ctx.send(embed=embed)
+    if isinstance(error, MissingPermissions):
+        embed = discord.Embed(title=f"You don't have the permission to set credits.", color=0xff0000)
+        embed.set_footer(text=f"{ctx.message.author}'s command.")
+        await ctx.send(embed=embed)
+
+@client.command()
+@commands.guild_only()
+async def pay(ctx, member: discord.Member, amount):
+    db = sqlite3.connect('database.sqlite')
+    cursor = db.cursor()
+    guild_id = ctx.message.guild.id
+    cursor.execute(f"SELECT Players FROM credits WHERE Players = '{ctx.message.author.id}' AND guildID = '{guild_id}'")
+    result_playerID = cursor.fetchone()
+    if result_playerID is None:
+        cursor.execute(f"INSERT INTO credits ('Players', 'guildID') values('{ctx.message.author.id}', '{guild_id}')")
+        db.commit()
+    cursor.execute(f"SELECT Players FROM credits WHERE Players = '{member.id}' AND guildID = '{guild_id}'")
+    result_player2ID = cursor.fetchone()
+    if result_player2ID is None:
+        cursor.execute(f"INSERT INTO credits ('Players', 'guildID') values('{member.id}', '{guild_id}')")
+        db.commit()
+    cursor.execute(f"SELECT Credits FROM credits WHERE Players = '{ctx.message.author.id}' AND guildID = '{guild_id}'")
+    result_member1credits = cursor.fetchone()
+    if int(result_member1credits[0]) >= int(amount):
+        cursor.execute(f"UPDATE credits SET Credits = Credits - {amount} WHERE Players = {ctx.message.author.id} AND guildID = {guild_id}")
+        cursor.execute(f"UPDATE credits SET Credits = Credits + {amount} WHERE Players = {member.id} AND guildID = {guild_id}")
+        db.commit()
+        embed = discord.Embed(description=f":coin: You payed **{amount}** credits to **{member}**! :coin:", color=0xffee00)
+        embed.set_footer(text=f"{ctx.message.author}'s command.")
+        await ctx.send(embed=embed)
+    else:
+        embed = discord.Embed(title=f"You don't have enough credits.", color=0xff0000)
+        embed.set_footer(text=f"{ctx.message.author}'s command.")
+        await ctx.send(embed=embed)
 
 #####   CLEAR COMMAND   ##### (functional)
 
